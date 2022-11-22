@@ -1,23 +1,42 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
 <!-- # Filename: Oregon_Crime_Report.rmd -->
+
 <!-- # Author: @russl_corey -->
+
 <!-- # Date: oct 10, 2022 -->
+
 <!-- # This program is free software: you can redistribute it and/or modify it under  -->
+
 <!-- # the terms of the GNU General Public License as published by the Free Software  -->
+
 <!-- # Foundation, either version 3 of the License, or (at your option) any later  -->
+
 <!-- # version. -->
+
 <!-- #  -->
+
 <!-- # This program is distributed in the hope that it will be useful, but WITHOUT ANY  -->
+
 <!-- # WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A  -->
+
 <!-- # PARTICULAR PURPOSE. See the GNU General Public License for more details. -->
+
 <!-- # You should have received a copy of the GNU General Public License along with  -->
+
 <!-- # this program. If not, see <https://www.gnu.org/licenses/>.  -->
 
 ---
 title: "Oregon Open Crime Data Analysis"
 author: Russell_Corey
 date: October, 19 2022
-output: pdf_document
+output: html_document
 ---
+
 \newpage
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
@@ -30,50 +49,54 @@ source("Oregon_Crime_Offenses.r")
 setwd('/home/russell/Dropbox/DataAnalysis/Oregon_Crime_Report')
 
 # define study counties
-study_counties = c('oregon', 'lane', 'multnomah', 'washington', 'baker', 'clackamas')
+study_counties = c('lane', 'multnomah', 'washington', 'baker', 'clackamas')
 ```
+
 # Intro
-  We will explore crime reports in Oregon. We will look at the number of reported 
-  offenses as aggregated by both month and county along with a close look at violent offenses in particular. 
-  Rates of offense aggregated along counties will be normalized using 2020 Census data.
-  
+
+We will explore crime reports in Oregon. We will look at the number of reported offenses as aggregated by both month and county along with a close look at violent offenses in particular. Rates of offense aggregated along counties will be normalized using 2020 Census data. Source code will be posted on [Github](https://github.com/russl-corey/Oregon_Crime)
+
 # Data
- The two data sources used are the "Uniform Crime Reporting" Offenses data and
- the Oregon 2020 Census data from Portland University. 
- 
+
+The two data sources used are the "Uniform Crime Reporting" Offenses data and the Oregon 2020 Census data from Portland University.
+
 #### Crime Data
- The crime reporting data set is accissable directly from 
- 
- https://www.oregon.gov/osp/Pages/Uniform-Crime-Reporting-Data.aspx
- 
+
+The crime reporting data set is accissable directly from
+
+<https://www.oregon.gov/osp/Pages/Uniform-Crime-Reporting-Data.aspx>
+
 #### Population Data
- The Oregon census data can be found at the website 
- 
- https://www.pdx.edu/population-research/census-data-oregon 
- 
- with the direct link being 
- 
- https://drive.google.com/uc?export=download&id=1JrrmYiQUBPux8nnJ88epAAk9U5rbRDBD
 
-# Data Exploration
+The Oregon census data can be found at the website
 
-Overview of number of records collected per month and the total number of distinct 
-offenses for the data set.
+<https://www.pdx.edu/population-research/census-data-oregon>
+
+with the direct link being
+
+<https://drive.google.com/uc?export=download&id=1JrrmYiQUBPux8nnJ88epAAk9U5rbRDBD>
+
+\newpage
+
+# Data Exploration and Validation
+
+Overview of number of records collected per month and the total number of distinct offenses for the data set.
 
 ```{r sample offenses, echo=FALSE, message=FALSE}
+#library(kableExtra)
 
 all_offenses %>%
   tail() %>%
-  select(-c('date', 'county')) %>%
-  kable(caption = 'Offenses Reports')
+  select(-c('date', 'county', 'NIBRS Crime Against')) %>%
+  kable(caption = 'Offenses Reports') #%>%
+  #kable_styling( font_size = 5)
 
 ```
 
-Each record has a count of distinct offenses. We can compare the number of reports 
-per month and the total number of distinct offenses.
+Each record has a count of distinct offenses. We can compare the number of reports per month and the total number of distinct offenses.
 
 ```{r define helper functions, echo=FALSE, message=FALSE}
-all_offenses_m_count <- tally_offenses(all_offenses)
+all_offenses_m_count <- tally_off_month(all_offenses)
 p <- ggplot() +
   labs(y='Number per Month', title="Open Data Offenses Overview") +
   scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
@@ -88,16 +111,43 @@ all_offenses_m_count %>%
 
 ```
 
-There is a shape decline in the last month. We will ignore that month, assuming that it 
-is due to a lag in reporting and assimilating.
+There is a shape decline in the last month. We will ignore that month, assuming that it is due to a lag in reporting and assimilating.
 
-\newpage
+## Outlier Overview
+
+```{r total offenses boxplot, echo=FALSE, message=FALSE}
+
+boxplot(all_offenses_m_count$`Total Distinct Offenses`, ylab='Distinct Offenses', main='Potential Outliers: "Total Distinct Offenses"')
+
+out <- boxplot.stats(all_offenses_m_count$`Total Distinct Offenses`)$out
+out_ind <- which(all_offenses_m_count$`Total Distinct Offenses` %in% c(out))
+
+all_offenses_m_count[out_ind,] %>%
+  select('month', 'Total Records', 'Total Distinct Offenses') %>%
+  mutate('z_score' = round((`Total Distinct Offenses` - mean(all_offenses_m_count$`Total Distinct Offenses`)) / sd(all_offenses_m_count$`Total Distinct Offenses`), digits=2) ) %>%
+  kable(caption='Potential Outliers: "Total Distinct Offenses"')
+
+```
+
+```{r total records boxplot, echo=FALSE, message=FALSE}
+
+boxplot(all_offenses_m_count$`Total Records`, ylab='Total Records', main='Potential Outliers: "Total Records"')
+
+out <- boxplot.stats(all_offenses_m_count$`Total Records`)$out
+out_ind <- which(all_offenses_m_count$`Total Records` %in% c(out))
+
+all_offenses_m_count[out_ind,] %>%
+  select('month', 'Total Records', 'Total Distinct Offenses') %>%
+  mutate('z_score' = round((`Total Records` - mean(all_offenses_m_count$`Total Records`)) / sd(all_offenses_m_count$`Total Records`), digits=2) ) %>%
+  kable(caption='Potential Outliers: "Total Records"')
+
+```
+
+We will then be excluding month 33, '2022-09-01'.
 
 # Population
 
-For per ca-pita calculations we need to know the population broken down by counties. 
-This data is in the Census data set.  The data gives us the population in 2010 and 2020 along 
-with the percentage change.
+For per ca-pita calculations we need to know the population broken down by counties. This data is in the Census data set. The data gives us the population in 2010 and 2020 along with the percentage change.
 
 ```{r plot, echo=FALSE, results = 'asis', warning=FALSE, }
 
@@ -105,29 +155,14 @@ with the percentage change.
 # Show table of populations in study counties
 county_pop %>%
   subset(county_pop$county %in% study_counties) %>%
-  select('county', '2010', '2020', 'percent change') %>%
+  select('county', '2010', '2020', 'percent_change', 'pop_rate_year') %>%
   kable(caption = "County Population")
 
 ```
 
-Using simple linear model we can use the recorded rate of population change along with
-initial 2020 population to interpolated populations for months in our data set.
-
-```{r pop forecost, echo=FALSE, results = 'asis', warning=FALSE}
-
-# Show table of populations in study counties
-kable(head(select(pop_forcast, 'month', study_counties), 5), caption = "County Population")
-
-```
-
-
-
 # Violent Offenses
 
-Violent offenses are of particular concern so let's look at those offenses. To determine 
-which offenses are violent we use the FBI's definition of violent crimes to categorize the 
-'NIBRS Report Title' column in the data set.
-
+Violent offenses are of particular concern so let's look at those offenses. To determine which offenses are violent we use the FBI's definition of violent crimes to categorize the 'NIBRS Report Title' column in the data set.
 
 ```{r violent titles, echo= FALSE, results = 'asis', warning=FALSE}
 
@@ -139,20 +174,40 @@ We can look at the break down of these violent offenses for the whole state.
 ```{r violent offenses overview by type, echo= FALSE, results = 'asis', warning=FALSE}
 
 # tally offenses 
-violent_m_count <- tally_violent_offenses(offenses)
+violent_m_count <- tally_vo_month(offenses)
 
 # Line plot monthly violent offenses
-plot_violent_offenses(violent_m_count)
+p <- ggplot() +
+  labs(y='Number per Month', title=paste("Violent Offenses in Oregon", start_month, 'to',  end_month)) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
+  geom_line(data=violent_m_count, aes(x=month, y=`All Violent Offenses`, color='All Violence')) +
+  geom_line(data=violent_m_count, aes(x=month, y=`Aggravated Assault`, color="Assault")) +
+  geom_line(data=violent_m_count, aes(x=month, y=`Robbery`, color="Robbery")) +
+  geom_line(data=violent_m_count, aes(x=month, y=`Forcible Rape`, color="Rape")) +
+  geom_line(data=violent_m_count, aes(x=month, y=`Willful Murder`, color="Murder")) 
+
+p
+
+violent_m_count %>%
+  tail() %>%
+  select(-c('m', 'v_off', 'Total Distinct Offenses')) %>%
+  kable(caption = paste('Monthly Violent Offenses', start_month, 'to', end_month))#,
+     #   format='latex') # %>%
+  #kable_styling( font_size = 6, full_width = TRUE)
 
 ```
 
-We can also compare the number of violent offenses verses non-violent offenses for 
-the state over the study period.
+We can also compare the number of violent offenses verses non-violent offenses for the state over the study period.
 
 ```{r violent offenses overview comparison, echo= FALSE, results = 'asis', warning=FALSE}
 
 # Line plot violent offenses vs nonviolent offenses
-plot_violent_vs_non(violent_m_count)
+  p <- ggplot() +
+    labs(y='Number per Month', title=paste("Comparison of Offenses in Oregon", start_month, 'to', end_month)) +
+    scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
+    geom_line(data=violent_m_count, aes(x=month, y=`All Violent Offenses`, color='Violent Offenses')) +
+    geom_line(data=violent_m_count, aes(x=month, y=`Nonviolent Offenses`, color="Nonviolent Offenses")) 
+  p  
 ```
 
 Next we can look at the total number of distinct violent offenses by county.
@@ -160,14 +215,14 @@ Next we can look at the total number of distinct violent offenses by county.
 ```{r violent offenses by county ,  echo= FALSE, results = 'asis', warning=FALSE}
 
 # Combined line plot total violent offenses in select counties
-lane = tally_violent_offenses(offenses[offenses$county == 'lane',])
-washington = tally_violent_offenses(offenses[offenses$county == 'washington',])
-multnomah = tally_violent_offenses(offenses[offenses$county == 'multnomah',])
-washington = tally_violent_offenses(offenses[offenses$county == 'washington',])
-linn = tally_violent_offenses(offenses[offenses$county == 'linn',])
+lane = tally_vo_county_month( 'lane')
+washington = tally_vo_county_month('washington')
+multnomah = tally_vo_county_month('multnomah')
+washington = tally_vo_county_month('washington')
+linn = tally_vo_county_month('linn')
 
  p <- ggplot() +
-    labs(y='Number per Month', title="Total Violent Offenses") +
+    labs(y='Number per Month', title="Total Violent Offenses in Select Counties") +
     scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
     geom_line(data=lane, aes(x=month, y=`All Violent Offenses`, color='Lane County')) +
     geom_line(data=washington, aes(x=month, y=`All Violent Offenses`, color='Washington County')) +
@@ -176,52 +231,42 @@ linn = tally_violent_offenses(offenses[offenses$county == 'linn',])
   p  
 ```
 
-Recall from the population table that these counties vary greatly by population. 
-So, using the population data we can plot the above graph adjusted to the 
-county's population.
+Recall from the population table that these counties vary greatly by population. So, using the population data we can plot the above graph adjusted to the county's population.
 
 # Violent Offenses by County
 
-```{r violent offenses by county per capita, echo=FALSE,  warning=FALSE}
-
-# 
-lane = tally_percap('lane')
-washington = tally_percap('washington')
-multnomah = tally_percap('multnomah')
-linn = tally_percap('linn')
-
-
- p <- ggplot() +
-    labs(y='Number per Month', title="Per Capita Violent Offenses") +
-    scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
-    geom_line(data=lane, aes(x=month, y=`All Violent Offenses`, color='Lane County')) +
-    geom_line(data=washington, aes(x=month, y=`All Violent Offenses`, color='Washington County')) +
-   geom_line(data=linn, aes(x=month, y=`All Violent Offenses`, color='Linn County')) +
-    geom_line(data=multnomah, aes(x=month, y=`All Violent Offenses`, color='Multnomah County')) 
-  p  
-
-```
 We can look at the aggregates of violent offenses by county.
 
 ```{r violent offenses by county per capita table2,  echo= FALSE, results = 'asis', warning=FALSE}
-county_averages %>%
-  subset(`county` %in% study_counties) %>%
-  kable( caption = 'County Total Violent Offenses')
+vo_county_sums %>%
+#  subset(`county` %in% study_counties) %>%
+  kable( caption = 'County Total Violent Offenses', digits=2)
 
+barplot(vo_county_sums$offenses,
+  main = "Total Violent Offenses Over Study Period", 
+  ylab = "Offenses",
+  names.arg = vo_county_sums$county,
+  #col = "blue",
+  density = 40,
+  las = 2,
+  cex.names = 0.7,
+  #horiz = TRUE
+  )
 ```
-From the table it appears that the rate of violent offenses is far higher in 
-Multnomah county than others. 
+
+From the table it appears that the rate of violent offenses is far higher in Multnomah county than others.
 
 ```{r violent offenses by county per capita table3,  echo= FALSE, results = 'asis', warning=FALSE}
 
-merged_data <- county_averages %>% merge(county_pop, by='county', all=FALSE) 
+merged_data <- vo_county_sums %>% merge(county_pop, by='county', all=FALSE) 
 
-merged_data[order(merged_data$percap_off, decreasing = TRUE),] %>%
-  select('county', 'offenses', '2020', 'percap_off') %>%
-  head() %>%
-  kable( caption = 'Counties with Highest Per Capita Violent Offenses ')
+merged_data[order(merged_data$vo_percap, decreasing = TRUE),] %>%
+  select('county', 'offenses', '2020', 'vo_percap') %>%
+ # head() %>%
+  kable( caption = 'Counties with Highest Per Capita Violent Offenses ', digits=2)
 
 ```
+
 
 
 ```{r violent offenses by county per capita map,  echo= FALSE, results = 'asis', warning=FALSE}
@@ -236,7 +281,7 @@ area <- subset(area, area$STATEFP == 41)
 
 # rename counties to lower case
 area$county <- tolower(area$NAME)
-area<- merge(x=area, y=county_averages, by='county', all=FALSE)
+area<- merge(x=area, y=vo_county_sums, by='county', all=FALSE)
 
 # define IDs for the polygons
 area$id = rownames(area)
@@ -244,15 +289,85 @@ area$id = rownames(area)
 #area.map <- fortify(area, region = 'id')
 
 ggplot() +
-  geom_sf(data=area, aes(fill =percap_off)) +
+  geom_sf(data=area, aes(fill =vo_percap)) +
   scale_fill_gradient(low='white', high='red', na.value= NA) +
   labs(title='Per Capita Violent Offenses', fill='Violent Offense Per Capita') +
    theme_void() 
 ```
 
+# Corrlation
 
+```{r violent offenses by county corr matrix,  echo= FALSE, results = 'asis', warning=FALSE}
+library("ggcorrplot")       
 
+county_violent_month %>%
+  select(-c('month')) %>%
+  cor() %>%
+  ggcorrplot(show.diag = FALSE, type = 'lower') +  
+  ggplot2::theme(axis.text.y=ggplot2::element_text(size=10),
+                 axis.text.x=ggplot2::element_text(size=8),
+                 legend.text=ggplot2::element_text(size=10))
+  #scale_x_discrete(guide = guide_axis(n.dodge=2))+
+ # scale_y_discrete(guide = guide_axis(n.dodge=2)) +
+  #geom_tile(fill="white") +
+#  geom_tile(height=1.2, width=1.2) 
+  #theme(text = element_text(size = 12))
+```
 
+### Total monthly violent offenses by county
+
+```{r violent offenses by county monthly ,  echo= FALSE, results = 'asis', warning=FALSE}
+
+# Combined line plot total violent offenses in select counties
+cnty_violent_cor %>%
+  filter(`pearson_cor` > 0.32) %>%
+  select('pearson_cor') %>%
+  kable(row.names = NA, caption='Counties with positiv correlation >0.32 ', digits=2)
+
+cnty_violent_cor %>%
+  filter(`pearson_cor` < -0.32) %>%
+  select('pearson_cor') %>%
+  kable(caption='Counties with negative correlation < -0.32 ', digits=2)
+```
+
+# Linear Regression
+
+```{r violent offenses by county plots,  echo= FALSE, results = 'asis', warning=FALSE}
+    
+
+#for(countyname in study_counties){
+countyname <- 'oregon'
+  print(
+  county_violent_month %>%
+    select('x', all_of(countyname)) %>%
+    rename('month' = 'x') %>%
+    rename('v_off' = all_of(countyname)) %>%
+   # rename('m' = x) %>%
+    ggplot( aes(month, v_off)) +
+    labs(title = paste(countyname,
+                      'pearson corr:', lm_summary$pearson_cor[lm_summary$county == countyname],
+                      'vo_rate_year:', lm_summary$vo_rate_year[lm_summary$county == countyname])) +
+    geom_point() +
+    geom_smooth(method='lm')
+  )
+#}
+
+#data
+
+```
+
+```{r violent offeneses month lin regg,  echo= FALSE, results = 'asis', warning=FALSE}
+
+lm_summary[order(-lm_summary$pearson_cor),] %>%
+  select('county', 'pearson_cor', '2020', 'vo_rate_year', 'pop_rate_year', 'adjusted_rate') %>%
+  head() %>%
+  kable(caption='pearson correlation and linear reg rate', digits=2)
+
+lm_summary[order(-lm_summary$pearson_cor),] %>%
+  select('county','pearson_cor', '2020',  'vo_rate_year', 'pop_rate_year', 'adjusted_rate') %>%
+  tail() %>%
+  kable(caption='pearson correlation and linear reg rate', digits =2)
+```
 
 \newpage
 
@@ -261,9 +376,9 @@ ggplot() +
 #### Oregon Crime Data
 
 "Oregon State Police: Uniform Crime Reporting"
- 
+
     https://www.oregon.gov/osp/Pages/Uniform-Crime-Reporting-Data.aspx
- 
+
 #### Oregon Census Data
 
 "Census Data for Oregon" Population Research Center
@@ -274,42 +389,100 @@ Direct link for data set:
 
     https://drive.google.com/uc?export=download&id=1JrrmYiQUBPux8nnJ88epAAk9U5rbRDBD
 
-##### FBI 
+##### FBI
 
 "FBI-Violent Crime" FBI: UCR
 
     https://ucr.fbi.gov/crime-in-the-u.s/2019/crime-in-the-u.s.-2019/topic-pages/violent-crime
 
+#### Oregon Spatial Data Library
+
+"Oregon Counties - 2015"
+
+    https://spatialdata.oregonexplorer.info/geoportal/details;id=361c06fee9de4e24a72e280fb386a771
+
 \newpage
 
-# APPENDIX
+# APPENDIX A
 
-# Total Violent Offenses Per Capita per County
+Appendix description: Raw data tables.
 
-Total counts for study period: 
+# A1 Total Violent Offenses Per Capita per County
+
+Total counts for study period:
 
 ```{r violent offenses by county per capita table,  echo= FALSE, results = 'asis', warning=FALSE}
 
-kable(county_averages, caption = 'County Total Violent Offenses')
+kable(vo_county_sums, caption = 'County Total Violent Offenses')
 ```
 
 \newpage
 
-# Population
+# A2 Population
 
 ```{r Census data, echo=FALSE, results = 'asis'}
 
 # Show table of populations in study counties
-kable(select(county_pop, 'county', '2010', '2020', 'percent change'), caption = "County Population 2010 and 2020")
+kable(select(county_pop, 'county', '2010', '2020', 'percent_change'), caption = "County Population 2010 and 2020")
 
 ```
+
 \newpage
 
-# Offenses by Type
+# A4 Sums of offenses by type by date
 
-```{r offenses by type, echo= FALSE, results = 'asis'}
+```{r offenses by type by month, echo= FALSE, results = 'asis'}
 
 # Show table of violent crimes committed over study time
-kable(crime_counts, caption = "Offenses")
+off_per_month %>% 
+  select(c(1:13)) %>%
+  head() %>%
+  kable(caption = "Aggregate Monthly Counts") #%>%
+  #kable_styling( font_size = 5)
 
 ```
+
+\newpage
+
+# A5 Correlation Matrix of Total Monthly Violent Offenses
+
+```{r appendix a5, echo= FALSE, results = 'asis'}
+
+# cnty_violent_cor %>%
+#   kable(caption = 'Correlation Matrix County Monthly Violent Offenses')
+
+lm_summary %>%
+  select('county','pearson_cor', '2020',  'vo_rate_year', 'pop_rate_year', 'adjusted_rate') %>%
+  kable(caption='pearson correlation and linear reg rate')
+```
+
+\newpage
+
+# A6 Violent offenses per county
+
+```{r appendix a6,  echo= FALSE, results = 'asis', warning=FALSE}
+for(countyname in county_list){
+  print(
+  county_violent_month %>%
+    select('x', countyname) %>%
+    rename('y' = countyname) %>%
+    ggplot( aes(x, y)) +
+    labs(title = paste(countyname, lm_summary$pearson_cor[lm_summary$county == countyname],
+         "yearly change:", lm_summary$vo_change_year[lm_summary$county == countyname], 
+         "yearly pop change",lm_summary$pop_rate_year[lm_summary$county == countyname]))  +
+    geom_point() +
+    geom_smooth(method='lm')
+  )
+}
+
+```
+
+\newpage
+
+# Appendix B
+
+source code available at <https://github.com/russl-corey/Oregon_Crime>
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with this program. If not, see [\<https://www.gnu.org/licenses/\>](https://www.gnu.org/licenses/).

@@ -32,17 +32,21 @@ source('OpenData-Offenses-All.r')
 
 all_offenses <- offenses
 
-# Filter out records from last two months
-end_month <- Sys.Date() %m-% months(2) %>%
-  floor_date(unit='months')
+# define end of study period. date from outlier analysis
+end_date <- as.Date('2022-09-01')
+end_month <- end_date %m-% months(1)
+
+# create list of the months in the study period
+month_list <- seq(floor_date(min(offenses$date), unit='month'), end_month, by='month')
+start_month <- month_list[1]
 
 # Filter out records from last two months
-offenses <- offenses[offenses$date < end_month,]
+offenses <- offenses[offenses$date < end_date,]
 
 # Milestone 2 goal: make table of number of offenses per month by type
 
 # Use function to wrap tallying distinct offenses
-tally_offenses <- function(offenses){
+tally_off_month <- function(offenses){
   # Create a table counting the number of offenses data set to study window
   offenses_m_count <- offenses %>%
     group_by(month=floor_date(date, 'month')) %>%
@@ -75,37 +79,15 @@ tally_offenses <- function(offenses){
 }
 
 # function that calls tally_offenses for county
-tally_county_offenses <- function(county){
+tally_county_off_month <- function(county){
   # pipe offenses subset into the tally_offenses function defined above
-  return(offenses %>% subset(`county` == county) %>% tally_offenses())
+  return(offenses %>% subset(`county` == county) %>% tally_off_month())
 }
 
 # Run tally algo on all offenses
-offenses_m_count <- tally_offenses(offenses)
+off_per_month <- tally_off_month(offenses)
 
-# Milestone 4 goal: explore crime types and counts 
-
-# Create data frame for offense counts by type
-crime_counts <- data.frame(title=cbind(unique(offenses$`NIBRS Report Title`)))
-
-# relabel rows as 1,2,3,...
-rownames(crime_counts) = 1:length(crime_counts[,1])
-
-# Iterate over offense title and store result to crime_counts vector
-for(tmp_crime in crime_counts$title){
-  
-  # Calculate the number of distinct offenses by summing column 
-  # 'Distinct Offenses' w.r.t. report title.
-  tmp_count <- offenses %>%
-    subset(offenses$`NIBRS Report Title`== tmp_crime) %>%
-    select(`Distinct Offenses`) %>%
-    sum()
-  
-  # Save results to crime_count data frame
-  crime_counts$count[crime_counts$title == tmp_crime] = tmp_count
-}
-
-# Milestone 5 goal: create a subset of "Violent Crimes"
+# Milestone 3 goal: create a subset of "Violent Crimes"
 
 # Violent crime is defined by the FBI as "murder and nonnegligent manslaughter, rape, robbery, and aggravated assault"
 # source: https://ucr.fbi.gov/crime-in-the-u.s/2019/crime-in-the-u.s.-2019/topic-pages/violent-crime
@@ -117,162 +99,196 @@ violent_titles <- c("Aggravated Assault",
                         "Robbery",
                         'Willful Murder')
 
-# Encode offenses with distinct violent/nonviolent offenses
-# offenses$`Distinct Violent`[offenses$`NIBRS Report Title` %in% violent_titles] <- 
-#   offenses$`Distinct Offenses`[offenses$`NIBRS Report Title` %in% violent_titles]
-
 # Create subset of all offenses using violent_titles vector
 violent_offenses <- subset(offenses, offenses$`NIBRS Report Title` %in% violent_titles)
 
-# Count total distinct offenses and violent offenses per county
-
-
-# Milestone 8: count violent crimes by month
-
+# Milestone 4: count violent crimes by month
 
 # Create a table counting the number of violent offenses per month
+tally_vo_month <- function(offenses){
 
-tally_violent_offenses <- function(offenses){
-  
   # call tally_offenses and filter columns of violent offenses
-  violent_m_count <- tally_offenses(offenses) %>%
-    select(one_of(c(c('month', 'Total Distinct Offenses'), violent_titles))) 
-  
+  violent_m_count <- offenses %>%
+    tally_off_month() %>%
+    select(one_of(c(c('month', 'Total Distinct Offenses'), violent_titles)))
+
   # sum remaining columns sans month
   violent_m_count$`All Violent Offenses` <- rowSums(select(violent_m_count, -c('month', `Total Distinct Offenses`)), na.rm=TRUE)
-  
+
   # Calculate non violent offenses by subtracting violent offenses from total offenses
   violent_m_count$`Nonviolent Offenses` <- violent_m_count$`Total Distinct Offenses` - violent_m_count$`All Violent Offenses`
-  
+
+  # Add a column for the month number
+  violent_m_count$m <- 1:length(violent_m_count$month)
+  violent_m_count$v_off <- violent_m_count$`All Violent Offenses`
+
   return(violent_m_count)
 }
 
+# get counts of violent offenses per month
+vo_per_month <- tally_vo_month(offenses)
 
-violent_m_count <- tally_violent_offenses(offenses)
-
-#lane <- tally_county_offenses('lane')
-
-# Milestone 9: Plot violent offenses by month
-plot_violent_offenses <- function (violent_m_count){
-  p <- ggplot() +
-    labs(y='Number per Month', title="Violent Offenses in Oregon") +
-    scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
-    geom_line(data=violent_m_count, aes(x=month, y=`All Violent Offenses`, color='All Violence')) +
-    geom_line(data=violent_m_count, aes(x=month, y=`Aggravated Assault`, color="Assault")) +
-    geom_line(data=violent_m_count, aes(x=month, y=`Robbery`, color="Robbery")) +
-    geom_line(data=violent_m_count, aes(x=month, y=`Forcible Rape`, color="Rape")) +
-    geom_line(data=violent_m_count, aes(x=month, y=`Willful Murder`, color="Murder")) 
-  
-  p
+# wrap above equation for subsets of counties
+tally_vo_county_month <- function(countyname){
+  offenses %>%
+    subset(county == countyname) %>%
+    tally_vo_month() %>%
+    return()
 }
 
-plot_violent_vs_non <- function(violent_m_count){
-  p <- ggplot() +
-    labs(y='Number per Month', title="Violent vs Non Violent Offenses in Oregon") +
-    scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
-    geom_line(data=violent_m_count, aes(x=month, y=`All Violent Offenses`, color='Violent Offenses')) +
-    geom_line(data=violent_m_count, aes(x=month, y=`Nonviolent Offenses`, color="Nonviolent Offenses")) 
-  p  
-}
-# Milestone 10 goal: compute offenses month counts per capita
+
+# Milestone 5 goal: compute offenses month counts per capita
 
 # load census data
 source("Oregon_Census_Counties.r")
 
-# calculate oregon per capita offenses
-oregon_percap <-  merge(x=pop_forcast, 
-                        y=offenses_m_count, by=c('month'), all=FALSE) %>%
-  select(c('month', 'Total Distinct Offenses', 'oregon'))
-oregon_percap$percap <- oregon_percap$`Total Distinct Offenses` / oregon_percap$oregon
+# Create correlation matrix
+
+# start with data frame with both months and months enumerated as 1,2,3,...
+county_violent_month <- data.frame(x=1:length(month_list), month=month_list)
+
+# call tally_offenses and filter columns of violent offenses
+vm_count <- tally_off_month(offenses) %>%
+  select(one_of(c(c('month', 'Total Distinct Offenses'), violent_titles))) 
+
+# sum remaining columns sans month
+vm_count$'All Violent Offenses' <- rowSums(select(vm_count, -c('month', `Total Distinct Offenses`)), na.rm=TRUE)
+
+# drop left over columns
+vm_count <- vm_count %>%
+  select('month', 'All Violent Offenses' )
+
+# rename 'All Violent Offenses' to county name
+names(vm_count)[names(vm_count) == 'All Violent Offenses'] <- 'oregon'
+
+# merge results to county_violent_month 
+county_violent_month <- merge(x=county_violent_month, y=vm_count, by='month', all=TRUE) 
+
+# next fill out the above data frame by looping over the counties
+for(countyname in county_list){
+  
+  # pull subset of county offenses
+  county_offenses <- subset(offenses, county == countyname)
+  
+  # call tally_offenses and filter columns of violent offenses
+  violent_m_count <- tally_off_month(county_offenses) %>%
+  select(one_of(c(c('month', 'Total Distinct Offenses'), violent_titles))) 
+  
+  # sum remaining columns sans month
+  violent_m_count$'All Violent Offenses' <- rowSums(select(violent_m_count, -c('month', `Total Distinct Offenses`)), na.rm=TRUE)
+  
+  # drop left over columns
+  violent_m_count <- violent_m_count %>%
+    select('month', 'All Violent Offenses' )
+  
+  # rename 'All Violent Offenses' to county name
+  names(violent_m_count)[names(violent_m_count) == 'All Violent Offenses'] <- countyname
+  
+  # merge results to county_violent_month 
+  county_violent_month <- merge(x=county_violent_month, y=violent_m_count, by='month', all=TRUE) 
+}  
+
+# set na's to 0 
+county_violent_month[is.na(county_violent_month)] = 0
+
+cnty_violent_cor <- county_violent_month %>%
+  select(-c('month')) %>%
+  cor() %>%
+  data.frame() %>%
+  rename('pearson_cor' = 'x') %>%
+  select('pearson_cor') %>%
+  mutate(pearson_cor = round(pearson_cor, digits=3))
+
+cnty_violent_cor$county = rownames(cnty_violent_cor)
 
 
-tally_percap <- function(county){
-  
-  # get subset of offenses for county
-  county_offenses <- offenses[offenses$county == all_of(county),]
-  
-  # make table of violent offenses per month for the county
-  county_violent_counts <- tally_violent_offenses(county_offenses)
-  
-  # get subset of population table for county
-  county_pop <- pop_forcast %>% select(c('month', all_of(county)))
-  
-  # merge pop table to violent counts
-  c_cap<- merge(x=county_violent_counts, y=county_pop, by=c('month'), all=FALSE) %>%
-    select('month', all_of(county), 'Total Distinct Offenses','All Violent Offenses', 'Nonviolent Offenses') %>%
-    rename_at(county, ~ 'county pop') 
-  
-  
-  c_cap$'Total Distinct Offenses' <- c_cap$'Total Distinct Offenses' / c_cap$'county pop'
-  c_cap$'All Violent Offenses' <- c_cap$'All Violent Offenses' / c_cap$'county pop'
-  c_cap$'Nonviolent Offenses' <- c_cap$'Nonviolent Offenses' / c_cap$'county pop'
-  
-
-  # cleanup
-  rm(county_pop)
-  rm(county_violent_counts)
-  rm(county_offenses)
-  
-  return(c_cap)
-}
-
-
-# Create table of avarge offeneses per county
-tally_county_avarges <- function(offenses){
+# Create table counting total violent offenses plus per capita for study period
+tally_vo_totals <- function(offenses){
   
   # get list of counties from census
   counties <- county_pop$county
   
   # empty vector for average distinct offenses
-  total_v <- c()
-  percap_v <- c()
+  vo_total <- c()
+  vo_percap <- c()
   
   for(county in counties){
-    #print(paste('Proccessing:', county))
-    v_count <- offenses$`Distinct Offenses`[offenses$`NIBRS Report Title` %in% violent_titles & offenses$county == county] %>%
-      sum()
+    # Treat 'oregon' separately 
+    if(county == 'oregon'){
+      vo_sum <- offenses$`Distinct Offenses`[offenses$`NIBRS Report Title` %in% violent_titles] %>%  sum()
+    }else{
+      vo_sum <- offenses$`Distinct Offenses`[offenses$`NIBRS Report Title` %in% violent_titles & offenses$county == county] %>%
+        sum()
+    }
     
-    v_percap <- 100 * v_count / county_pop$`2020`[county_pop$county == county]
+    # calculate percapita violent offenses
+    vo_percap_sum <- 100 * vo_sum / county_pop$`2020`[county_pop$county == county]
     
     # add results to vectors
-    total_v <- rbind(total_v, v_count)
-    percap_v <- rbind(percap_v, v_percap)
+    vo_total <- rbind(vo_total, vo_sum)
+    vo_percap <- rbind(vo_percap, vo_percap_sum)
   }
   
-  # put result vectors in dataframe
-  counts <- data.frame(county=counties, offenses=total_v, percap_off=percap_v)
+  # put result vectors in data frame
+  counts <- data.frame(county=counties, offenses=vo_total, vo_percap=vo_percap)
+  
+  # rename rows in data frame for month number
   rownames(counts) = c(1:length(counties))
+  
+  # cleanup
+  rm(vo_sum)
+  rm(vo_total)
+  rm(vo_percap)
   
   return(counts)
 }
 
-county_averages <- tally_county_avarges(offenses)
+vo_county_sums <- tally_vo_totals(offenses)
 
-plot_percap_all_offenses <- function (){
-  p <- ggplot() +
-    labs(y='Number per Month', title=" Offenses in Oregon") +
-    scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
-    geom_line(data=oregon_percap, aes(x=month, y=`percap`, color='offenses percapita')) 
+
+# Linear Model
+violent_m_count <- tally_vo_month(offenses)
+
+cnty_lm <- data.frame(county = c('oregon', county_list))
+
+lm1 <- lm(month ~ `Total Distinct Offenses`, data= violent_m_count)
+cnty_lm$vo_rate_year[cnty_lm$county == 'oregon'] <- round(lm1$coefficients[2] * 12, digits=3)
+
+for(countyname in c('oregon',county_list)){
+  # tally monthly violent offenses for county
+  if(countyname == 'oregon'){
+    v_month_total <- tally_vo_month(offenses)
+    #print('oregon')
+  }else{
+    v_month_total <- tally_vo_county_month(countyname)
+  }
   
-  p
+
+  # create linear model
+  lm1 <- lm(v_off ~ m, data= v_month_total)
+  
+  # copy rate coefficient from model to data frame
+  cnty_lm$vo_rate_year[cnty_lm$county == countyname] <- round(lm1$coefficients[2] * 12, digits=3)
 }
 
-# Milestone 1 goal: compute violent offenses month counts per capita
+lm_summary <- merge(x=cnty_lm, y=cnty_violent_cor, by='county',  all=TRUE)
+lm_summary <- merge(x=lm_summary, y=county_pop, by='county', all=TRUE)
+lm_summary$adjusted_rate <- round(lm_summary$vo_rate_year - lm_summary$pop_rate_year, digits=3)
 
-plot_percap_violent_offenses <- function (){
-  p <- ggplot() +
-    labs(y='Number per Month', title="Violent Offenses in Oregon") +
-    scale_x_date(date_labels = "%b %Y", date_breaks = "6 month") +
-    geom_line(data=oregon_percap_violent, aes(x=month, y=`percap`, color='offenses percapita')) 
-  
-  p
-}
+# Check if the sum of vo_rates across counties match oregon's
+sum_county_vo_rates <- sum(lm_summary$vo_rate_year[lm_summary$county != 'oregon' & !is.na(lm_summary$vo_rate_year)])
+diff_oregon <- lm_summary$vo_rate_year[lm_summary$county == 'oregon'] - sum_county_vo_rates
+
 
 # Clean up
+rm(cnty_lm)
 rm(tmp_count)
 rm(tmp_crime)
 rm(popv)
 rm(violent_offenses)
+rm(lm1)
+rm(county_offenses)
+#rm(county_violent_month)
 
 gc()
 
